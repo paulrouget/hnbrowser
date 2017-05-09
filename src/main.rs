@@ -55,9 +55,14 @@ fn main() {
                         }
                     }
                 }
+                // By waking up the main thread, it's also expected to let Servo
+                // run its compositor tasks.
+                // See https://github.com/servo/servo/issues/15734
                 browser.perform_updates();
             }
             win_event => {
+                // Forward any event directly to Servo.
+                // It's also a good place to intercept early key bindings.
                 browser.handle_event(win_event);
             }
         }
