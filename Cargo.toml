@@ -1,0 +1,10 @@
+[package]
+name = "synchro-example"
+version = "0.1.0"
+authors = ["Paul Rouget <me@paulrouget.com>"]
+
+[dependencies]
+synchro_glwindows = { git = "https://github.com/paulrouget/synchro-glwindows.git" }
+synchro_servo = { git = "https://github.com/paulrouget/synchro-servo.git" }
+log = "0.3"
+loggerv = "*"
