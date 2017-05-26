@@ -4,7 +4,11 @@ version = "0.1.0"
 authors = ["Paul Rouget <me@paulrouget.com>"]
 
 [dependencies]
-synchro_glwindows = { git = "https://github.com/paulrouget/synchro-glwindows.git" }
-synchro_servo = { git = "https://github.com/paulrouget/synchro-servo.git" }
+synchro_glwindows = { git = "https://github.com/paulrouget/synchro-glwindows" }
+synchro_servo = { git = "https://github.com/paulrouget/synchro-servo" }
 log = "0.3"
 loggerv = "*"
+
+# [replace]
+# "https://github.com/paulrouget/synchro-servo#synchro_servo:0.1.0" = { path = "../synchro-servo/" }
+# "https://github.com/paulrouget/synchro-glwindows#synchro_glwindows:0.1.0" = { path = "../synchro-glwindows/" }
