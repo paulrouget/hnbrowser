@@ -1,3 +1,5 @@
+#![feature(box_syntax)]
+
 #[macro_use]
 extern crate log;
 extern crate loggerv;
@@ -5,66 +7,74 @@ extern crate loggerv;
 extern crate synchro_servo;
 extern crate synchro_glwindows;
 
-use synchro_glwindows::GLWindow;
-use synchro_servo::{Constellation, Compositor, View, Browser};
-use synchro_servo::{BrowserVisibility, BrowserEvent, Cursor, ServoUrl, WindowEvent};
+use std::rc::Rc;
+use std::collections::HashMap;
 
+use synchro_glwindows::{GLWindow, GLWindowId};
+use synchro_servo::{Constellation, Compositor, View, Browser};
+use synchro_servo::{BrowserEvent, ServoUrl, servo_version, WindowEvent};
+
+fn create_window(windows: &mut HashMap<GLWindowId, (Rc<GLWindow>, Browser, Rc<View>)>, constellation: &Constellation, url: ServoUrl) {
+    let win = Rc::new(GLWindow::new());
+    let gl = win.get_gl();
+    let geometry = win.get_geometry();
+    let riser = win.create_event_loop_riser();
+    let compositor = Compositor::new(&constellation, gl);
+    let view = Rc::new(View::new(&compositor, geometry, riser, win.clone()));
+    let browser = Browser::new(constellation, url, view.clone());
+    windows.insert(win.id(), (win.clone(), browser, view));
+}
 
 fn main() {
     loggerv::init_quiet().unwrap();
 
-    let url = ServoUrl::parse("https://servo.org").unwrap();
+    let mut windows = HashMap::new();
 
-    let win1 = GLWindow::new();
-
-    let gl = win1.get_gl();
-    let geometry = win1.get_geometry();
-    let riser = win1.create_event_loop_riser();
+    info!("Servo version: {}", servo_version());
 
     let constellation = Constellation::new().unwrap();
-    let compositor = Compositor::new(&constellation, gl);
 
-    let view = View::new(&compositor, geometry, riser);
-    let browser = Browser::new(&constellation, url, view.clone());
+    let url = ServoUrl::parse("https://servo.org").unwrap();
+    create_window(&mut windows, &constellation, url);
+    let url = ServoUrl::parse("http://example.com").unwrap();
+    create_window(&mut windows, &constellation, url);
 
-    browser.set_visibility(BrowserVisibility::Visible);
+    synchro_glwindows::run(|event, win_id| {
+        match (event, win_id) {
 
-    synchro_glwindows::run(|event, window_id| {
-        match event {
-            WindowEvent::Idle => {
-                // This means the event loop as been awaken by Servo, via the EventLoopRiser.
-                // Let's go through the Servo events.
-
-                // Because of https://github.com/servo/servo/issues/15934
-                // events come from the view, not the browser.
-                let browser_events = (*view).get_events();
-                for e in browser_events {
-                    match e {
-                        BrowserEvent::Present => {
-                            win1.swap_buffers();
-                        }
-                        BrowserEvent::CursorChanged(cursor) => {
-                            win1.set_cursor(cursor);
-                        }
-                        BrowserEvent::StatusChanged(_) => {}
-                        BrowserEvent::TitleChanged(title) => {
-                            win1.set_title(&title.unwrap_or("No Title".to_owned()));
-                        }
-                        e => {
-                            warn!("Unhandled browser event: {:?}", e);
-                        }
-                    }
+            (WindowEvent::Idle, None) => {
+                for &(ref window, ref browser, ref view) in windows.values() {
+                    perform_updates(window, browser, view);
                 }
-                // By waking up the main thread, it's also expected to let Servo
-                // run its compositor tasks.
-                // See https://github.com/servo/servo/issues/15734
-                browser.perform_updates();
             }
-            win_event => {
-                // Forward any event directly to Servo.
-                // It's also a good place to intercept early key bindings.
-                browser.handle_event(win_event);
+            (e, None) => {
+                warn!("Got unexpected window-less window event: {:?}", e);
+            },
+            (e, Some(id)) => {
+                let &(_, ref browser, _) = windows.get(&id).unwrap();
+                browser.handle_event(e);
             }
         }
     });
+}
+
+
+fn perform_updates(window: &Rc<GLWindow>, browser: &Browser, view: &Rc<View>) {
+    // Because of https://github.com/servo/servo/issues/15934
+    // events come from the view, not the browser.
+    let browser_events = (**view).get_events();
+    for e in browser_events {
+        match e {
+            BrowserEvent::CursorChanged(cursor) => {
+                window.set_cursor(cursor);
+            }
+            BrowserEvent::TitleChanged(title) => {
+                window.set_title(&title.unwrap_or("No Title".to_owned()));
+            }
+            e => {
+                warn!("Unhandled browser event: {:?}", e);
+            }
+        }
+    }
+    browser.perform_updates();
 }
