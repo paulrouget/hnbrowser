@@ -1,14 +1,15 @@
 [package]
-name = "synchro-example"
+name = "hnbrowser"
 version = "0.1.0"
 authors = ["Paul Rouget <me@paulrouget.com>"]
 
 [dependencies]
-synchro_glwindows = { git = "https://github.com/paulrouget/synchro-glwindows" }
-synchro_servo = { git = "https://github.com/paulrouget/synchro-servo" }
-log = "0.3"
-loggerv = "*"
+servoglwindows = { git = "https://github.com/paulrouget/servoglwindows" }
+servoapi = { git = "https://github.com/paulrouget/servoapi" }
+open = "1.1.1"
 
-# [replace]
-# "https://github.com/paulrouget/synchro-servo#synchro_servo:0.1.0" = { path = "../synchro-servo/" }
-# "https://github.com/paulrouget/synchro-glwindows#synchro_glwindows:0.1.0" = { path = "../synchro-glwindows/" }
+
+[replace]
+"https://github.com/paulrouget/servoapi#servoapi:0.1.0" = { path = "../servoapi/" }
+"https://github.com/paulrouget/servoglwindows#servoglwindows:0.1.0" = { path = "../servoglwindows/" }
+"https://github.com/servo/servo#libservo:0.0.1" = { path = '../servo/components/servo' }

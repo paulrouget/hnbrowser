@@ -1,80 +1,116 @@
-#![feature(box_syntax)]
+extern crate open;
+extern crate servoapi;
+extern crate servoglwindows;
 
-#[macro_use]
-extern crate log;
-extern crate loggerv;
-
-extern crate synchro_servo;
-extern crate synchro_glwindows;
-
+use std::process;
 use std::rc::Rc;
-use std::collections::HashMap;
 
-use synchro_glwindows::{GLWindow, GLWindowId};
-use synchro_servo::{Constellation, Compositor, View, Browser};
-use synchro_servo::{BrowserEvent, ServoUrl, servo_version, WindowEvent};
+use servoglwindows::GLWindow;
 
-fn create_window(windows: &mut HashMap<GLWindowId, (Rc<GLWindow>, Browser, Rc<View>)>, constellation: &Constellation, url: ServoUrl) {
-    let win = Rc::new(GLWindow::new());
-    let gl = win.get_gl();
-    let geometry = win.get_geometry();
-    let riser = win.create_event_loop_riser();
-    let compositor = Compositor::new(&constellation, gl);
-    let view = Rc::new(View::new(&compositor, geometry, riser, win.clone()));
-    let browser = Browser::new(constellation, url, view.clone());
-    windows.insert(win.id(), (win.clone(), browser, view));
-}
+use servoapi::Constellation;
+use servoapi::{BrowserEvent, ServoUrl, WindowEvent, WindowNavigateMsg};
+use servoapi::{Key, SUPER};
 
 fn main() {
-    loggerv::init_quiet().unwrap();
+    let url = ServoUrl::parse("https://news.ycombinator.com").unwrap();
+    let original_domain = url.domain().unwrap().to_owned();
 
-    let mut windows = HashMap::new();
+    // The embedder needs to provide 2 pieces:
+    // gl buffer + mean to wakeup the event loop
 
-    info!("Servo version: {}", servo_version());
+    // window implements GLMethods
+    let window = Rc::new(GLWindow::new(800, 600));
 
+    // waker implements EventLoopWaker
+    let waker = window.create_event_loop_waker();
+
+    // The embedder creates a constellation, a compositor, a view and a browser.
+    // These are the minimal setup for a browser.
+
+    // One global constellation.
     let constellation = Constellation::new().unwrap();
+    let geometry = window.get_geometry();
+    // One compositor per native window.
+    let compositor = constellation.new_compositor(window.clone(), waker, geometry /*temporary - should go to view*/);
+    // We can have multiple view per compositor.
+    let view = compositor.new_view(geometry);
+    // We can have multiple browser per constellation.
+    let browser_id = constellation.new_browser(url, &compositor /*temporary*/).unwrap();
 
-    let url = ServoUrl::parse("https://servo.org").unwrap();
-    create_window(&mut windows, &constellation, url);
-    let url = ServoUrl::parse("http://example.com").unwrap();
-    create_window(&mut windows, &constellation, url);
+    // A browser is either offscreen or rendered in a view.
+    view.show(Some(browser_id));
 
-    synchro_glwindows::run(|event, win_id| {
+    window.set_title("Loading");
+
+    // The main event loop.
+
+    servoglwindows::run(|event, win_id| {
         match (event, win_id) {
 
-            (WindowEvent::Idle, None) => {
-                for &(ref window, ref browser, ref view) in windows.values() {
-                    perform_updates(window, browser, view);
+            (e, Some(_window_id)) => {
+                // Got an event from the OS. Mouse event, keyboard events, etc.
+                // They can be sent to servo, or maybe the embedder wants to handle
+                // some directly. Here, we intercept 3 of them.
+                //
+                // Note:
+                // As for now, events are sent to compositor. In the future, it will
+                // be browser, constellation or compositor. See #15934
+                match e {
+                    WindowEvent::KeyEvent(_, Key::Left, _, SUPER) => {
+                        compositor.handle_event(WindowEvent::Navigation(browser_id, WindowNavigateMsg::Back));
+                    }
+                    WindowEvent::KeyEvent(_, Key::Right, _, SUPER) => {
+                        compositor.handle_event(WindowEvent::Navigation(browser_id, WindowNavigateMsg::Forward));
+                    }
+                    WindowEvent::KeyEvent(_, Key::Escape, _, _) => {
+                        process::exit(0);
+                    }
+                    _ => {
+                        compositor.handle_event(e);
+                    }
                 }
             }
+            (WindowEvent::Idle, None) => {
+                // If the event loop is awaken with no window event, it means
+                // servo itself has events.
+
+                // Because of #15934 events come from compositor, not the browser.
+                let browser_events = compositor.get_events();
+                for e in browser_events {
+                    match e {
+                        BrowserEvent::CursorChanged(cursor) => {
+                            window.set_cursor(cursor);
+                        }
+                        BrowserEvent::TitleChanged(_browser, title_opt) => {
+                            window.set_title(&title_opt.unwrap_or("No Title".to_owned()));
+                        }
+                        BrowserEvent::LoadStart(_browser) => {
+                            window.set_title("Loading");
+                        }
+                        BrowserEvent::AllowNavigation(_browser, url, chan) => {
+                            let follow = url.domain().unwrap() == original_domain;
+                            chan.send(follow).unwrap();
+                            if !follow {
+                                open::that(url.as_str()).ok();
+                            }
+                        }
+                        BrowserEvent::Key(_, Some('r'), _, SUPER) => {
+                            // We handled 3 key bindings earlier.
+                            // In this case, the Cmd-R combo is handled after the event
+                            // has been through the web page.
+                            compositor.handle_event(WindowEvent::Reload(browser_id));
+                        }
+                        _ => {
+                            // Some more events
+                        }
+                    }
+                }
+                // compositor heartbeat.
+                compositor.perform_updates();
+            }
             (e, None) => {
-                warn!("Got unexpected window-less window event: {:?}", e);
-            },
-            (e, Some(id)) => {
-                let &(_, ref browser, _) = windows.get(&id).unwrap();
-                browser.handle_event(e);
+                println!("Got unexpected window-less window event: {:?}", e);
             }
         }
     });
-}
-
-
-fn perform_updates(window: &Rc<GLWindow>, browser: &Browser, view: &Rc<View>) {
-    // Because of https://github.com/servo/servo/issues/15934
-    // events come from the view, not the browser.
-    let browser_events = (**view).get_events();
-    for e in browser_events {
-        match e {
-            BrowserEvent::CursorChanged(cursor) => {
-                window.set_cursor(cursor);
-            }
-            BrowserEvent::TitleChanged(title) => {
-                window.set_title(&title.unwrap_or("No Title".to_owned()));
-            }
-            e => {
-                warn!("Unhandled browser event: {:?}", e);
-            }
-        }
-    }
-    browser.perform_updates();
 }
