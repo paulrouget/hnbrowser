@@ -10,6 +10,6 @@ open = "1.1.1"
 
 
 [replace]
-"https://github.com/paulrouget/servoapi#servoapi:0.1.0" = { path = "../servoapi/" }
-"https://github.com/paulrouget/servoglwindows#servoglwindows:0.1.0" = { path = "../servoglwindows/" }
+# "https://github.com/paulrouget/servoapi#servoapi:0.1.0" = { path = "../servoapi/" }
+# "https://github.com/paulrouget/servoglwindows#servoglwindows:0.1.0" = { path = "../servoglwindows/" }
 "https://github.com/servo/servo#libservo:0.0.1" = { path = '../servo/components/servo' }
