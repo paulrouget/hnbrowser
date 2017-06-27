@@ -38,7 +38,8 @@ fn main() {
     let browser_id = constellation.new_browser(url, &compositor /*temporary*/).unwrap();
 
     // A browser is either offscreen or rendered in a view.
-    view.show(Some(browser_id));
+    // temporary: This should be view, not compositor.
+    compositor.show(Some(browser_id));
 
     window.set_title("Loading");
 
